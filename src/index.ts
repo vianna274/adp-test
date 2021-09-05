@@ -4,6 +4,9 @@ import { FetchTaskResponse, SubmitTaskBody } from './api/models';
 import { executeMathOperation, MATH_OPERATORS } from './utils/math';
 import { AxiosResponse, AxiosError } from 'axios';
 import { handleAxiosError } from './utils/request';
+import WebSocket from 'ws';
+import 'dotenv/config';
+import { createWSPayload } from './utils/websocket';
 
 const enhancedFetchTask = async (): Promise<[AxiosResponse<FetchTaskResponse>, null] | [null, AxiosError]> => {
   try {
@@ -24,6 +27,8 @@ const enhancedPostSubmitTask = async (
     return [null, error];
   }
 };
+
+let lastExecutedTask: any;
 
 const executeTask = async () => {
   try {
@@ -46,6 +51,13 @@ const executeTask = async () => {
     }
 
     console.log(`${left} ${MATH_OPERATORS[operation]} ${right} = ${valueCalculated} -- Status: ${submitTaskRes!.data}`);
+
+    lastExecutedTask = {
+      right,
+      left,
+      operation,
+      valueCalculated,
+    };
   } catch (error) {
     console.error('Unhandled error', error);
   } finally {
@@ -57,4 +69,28 @@ executeTask();
 
 const server = http.createServer((req, res) => {});
 
-server.listen(4000);
+const serverListening = server.listen(process.env.PORT);
+
+const wss = new WebSocket.Server({
+  server: serverListening,
+});
+
+function onError(ws: any, err: any) {
+  console.error(`onError: ${err.message}`);
+}
+
+function onMessage(ws: any, data: any) {
+  console.log(`onMessage: ${data}`);
+  ws.send(`recebido!`);
+}
+
+function onConnection(ws: any, req: any) {
+  ws.on('message', (data: any) => onMessage(ws, data));
+  ws.on('error', (error: any) => onError(ws, error));
+  console.log(`onConnection`);
+}
+
+wss.on('connection', (ws) => {
+  const payload = createWSPayload({ type: 'executed-task', data: lastExecutedTask });
+  ws.send(payload);
+});
