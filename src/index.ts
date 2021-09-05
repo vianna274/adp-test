@@ -1,34 +1,16 @@
-import * as http from 'http';
-import { fetchTask, postSubmitTask } from './api';
-import { FetchTaskResponse, SubmitTaskBody } from './api/models';
-import { executeMathOperation, MATH_OPERATORS } from './utils/math';
-import { AxiosResponse, AxiosError } from 'axios';
-import { handleAxiosError } from './utils/request';
-import WebSocket from 'ws';
 import 'dotenv/config';
+
+import * as http from 'http';
+import { Subject, tap } from 'rxjs';
+import WebSocket from 'ws';
+
+import { executeMathOperation, MATH_OPERATORS } from './utils/math';
+import { handleAxiosError } from './utils/request';
+import { unsubscribe } from './utils/subscription';
+import { enhancedFetchTask, enhancedPostSubmitTask, TaskSubject } from './utils/task';
 import { createWSPayload } from './utils/websocket';
 
-const enhancedFetchTask = async (): Promise<[AxiosResponse<FetchTaskResponse>, null] | [null, AxiosError]> => {
-  try {
-    const response = await fetchTask();
-    return [response, null];
-  } catch (error) {
-    return [null, error];
-  }
-};
-
-const enhancedPostSubmitTask = async (
-  body: SubmitTaskBody,
-): Promise<[AxiosResponse<any>, null] | [null, AxiosError]> => {
-  try {
-    const response = await postSubmitTask(body);
-    return [response, null];
-  } catch (error) {
-    return [null, error];
-  }
-};
-
-let lastExecutedTask: any;
+const taskSubject = new Subject<TaskSubject>();
 
 const executeTask = async () => {
   try {
@@ -52,12 +34,12 @@ const executeTask = async () => {
 
     console.log(`${left} ${MATH_OPERATORS[operation]} ${right} = ${valueCalculated} -- Status: ${submitTaskRes!.data}`);
 
-    lastExecutedTask = {
+    taskSubject.next({
       right,
       left,
       operation,
       valueCalculated,
-    };
+    });
   } catch (error) {
     console.error('Unhandled error', error);
   } finally {
@@ -67,30 +49,22 @@ const executeTask = async () => {
 
 executeTask();
 
-const server = http.createServer((req, res) => {});
-
-const serverListening = server.listen(process.env.PORT);
+const server = http.createServer().listen(process.env.PORT);
 
 const wss = new WebSocket.Server({
-  server: serverListening,
+  server,
 });
 
-function onError(ws: any, err: any) {
-  console.error(`onError: ${err.message}`);
-}
+wss.on('connection', (clientWS) => {
+  const subscription = taskSubject
+    .pipe(
+      tap((task) => {
+        const payload = createWSPayload({ type: 'executed-task', data: task });
+        clientWS.send(payload);
+      }),
+    )
+    .subscribe();
 
-function onMessage(ws: any, data: any) {
-  console.log(`onMessage: ${data}`);
-  ws.send(`recebido!`);
-}
-
-function onConnection(ws: any, req: any) {
-  ws.on('message', (data: any) => onMessage(ws, data));
-  ws.on('error', (error: any) => onError(ws, error));
-  console.log(`onConnection`);
-}
-
-wss.on('connection', (ws) => {
-  const payload = createWSPayload({ type: 'executed-task', data: lastExecutedTask });
-  ws.send(payload);
+  clientWS.on('error', () => unsubscribe(subscription));
+  clientWS.on('close', () => unsubscribe(subscription));
 });
