@@ -1,6 +1,6 @@
 import { AxiosResponse, AxiosError } from 'axios';
-import { fetchTask, postSubmitTask } from 'src/api';
-import { MathOperation, FetchTaskResponse, SubmitTaskBody } from 'src/api/models';
+import { fetchTask, postSubmitTask } from '../api';
+import { MathOperation, FetchTaskResponse, SubmitTaskBody } from '../api/models';
 
 export type TaskSubject = {
   right: number;
