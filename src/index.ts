@@ -16,23 +16,23 @@ const executeTask = async () => {
   try {
     const [fetchTaskRes, fetchTaskError] = await enhancedFetchTask();
 
-    if (fetchTaskError) {
+    if (fetchTaskError || !fetchTaskRes) {
       console.error('Error at fetching task', fetchTaskError);
       return;
     }
 
-    const { right, left, operation, id } = fetchTaskRes!.data;
+    const { right, left, operation, id } = fetchTaskRes.data;
 
     const valueCalculated = executeMathOperation({ right, left, operation });
 
     const [submitTaskRes, submitTaskError] = await enhancedPostSubmitTask({ id, result: valueCalculated });
 
-    if (submitTaskError) {
-      handleAxiosError(submitTaskError);
+    if (submitTaskError || !submitTaskRes) {
+      submitTaskError && handleAxiosError(submitTaskError);
       return;
     }
 
-    console.log(`${left} ${MATH_OPERATORS[operation]} ${right} = ${valueCalculated} -- Status: ${submitTaskRes!.data}`);
+    console.log(`${left} ${MATH_OPERATORS[operation]} ${right} = ${valueCalculated} -- Status: ${submitTaskRes.data}`);
 
     taskSubject.next({
       right,
